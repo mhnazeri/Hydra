@@ -1,0 +1,80 @@
+# ==========================================
+# Hydra Deployment & Inference Configuration
+# ==========================================
+
+deployment:
+  checkpoint_path: hydra_path/checkpoint
+  device: cuda
+  debug_visualize: True     # Set to True to decode latents to video
+
+  # Action Chunking
+  chunk_size: 12             # k steps to execute before replanning (must be < model.pred_len)
+  plan_deviation_threshold: 0.25 # Snaps to new path if Euclidean deviation exceeds this (meters)
+  goal_tolerance: 0.50      # Distance to goal in meters to trigger success
+
+  waypoints:
+    - pose: [1.5400596, -2.4876537, 0.0]  # for a single point, the script only reads the last point and ignores the rest
+      image: null
+    - pose: [5.5, 0.3, 0.0]  # for a single point, the script only reads this point and ignores the rest
+      image: /hydra_exp_files/goals/jackal_baxter_goal.png
+
+  use_pose_head: True
+
+
+# Inference parameters
+inference:
+  pred_len: 12                 # desired rollout horizon at inference
+
+# ==============================================================================================
+# Discrete Latent Planner Settings Guide
+# ==============================================================================================
+# OVERALL BEHAVIOR:
+# - num_candidates: [10 - 64] Higher = better search space coverage, but slower. 16-32 is ideal.
+# - depth_iterations: [1 - 5] Number of iterative refinement steps. 2-3 is usually sufficient.
+# - temperature: [0.05 - 0.5] Gumbel noise scale. Higher explores more, lower exploits current best.
+# - alpha_momentum: [0.0 - 0.9] Smooths the search center. 0.0 = jumpy, 0.9 = sluggish steering.
+#
+# COST WEIGHTS (lambda_*):
+# - lambda_prior (0.1 - 2.0): Behavioral cloning prior. Higher forces human-like, smooth driving.
+# - lambda_img (0.01 - 0.1): Attraction to goal image. Keep small, otherwise it overrides obstacle safety.
+# - lambda_vq_energy (0.1 - 5.0): Penalizes hallucinated/OOD physical states. Higher = stays on manifold.
+#   If the robot tries impossible maneuvers (e.g., driving through walls/bushes), increase this.
+# - lambda_entropy (0.1 - 2.0): Predictive uncertainty. Penalizes driving into unseen/unknown areas.
+#   Higher = more cautious around corners, dynamic obstacles, and novel terrains.
+# - temp_discount (0.5 - 1.0): Temporal discount for uncertainty.
+#   e.g. 0.85 means t=1 is weighted 0.85, t=2 is 0.72...
+#   Lower = ignores far future. Higher = plans safely further ahead, but may cause hesitation.
+#   Note: Distance-to-goal (Euclidean) is un-discounted at the terminal step so it pulls strongly.
+# ==============================================================================================
+planner:
+  # Search Configuration
+  num_candidates: 18                 # Number of parallel trajectories to evaluate per iteration
+  depth_iterations: 3                # Number of optimization iterations (CEM style)
+  top_k_sampling: 10                 # Restrict VQ token sampling to the top K most likely tokens
+  temperature: 0.1                   # Softmax temperature for Gumbel-Max noise injection
+  alpha_momentum: 0.1                # Momentum for updating the search center across iterations
+  use_intent_cache: False            # Warm-start search using the best trajectory from the previous timestep
+
+  # Flow Matching (Surrogate Decoder) Options
+  use_fm_for_search: True            # Use Flow Matching ODEs to decode poses during search (False = use fast MLP)
+  fm_image_steps: 50                 # Number of Function Evaluations (NFEs) for image decoding
+  fm_pose_steps: 10                  # NFEs for pose decoding
+  search_solver: 'heun'              # ODE solver for Flow Matching (options: 'heun', 'euler')
+  max_turn_radians_per_step: 0.35    # Kinematic constraint: clamp yaw changes per step
+
+  # Cost Weights
+  lambda_prior: 0.5                  # Weight for Expert Prior (Action likelihood / behavioral cloning)
+  lambda_img: 0.02                   # Weight for Visual Goal adherence
+  lambda_vq_energy: 1.0              # Weight for VQ error (Penalize OOD physical hallucinations)
+  lambda_entropy: 0.5                # Weight for Predictive Visual Entropy (Penalize uncertainty)
+  temp_discount: 0.85                 # Temporal decay factor for all costs (Trust near future more than far future)
+
+pure_pursuit:
+  Kp_v: 1.2
+  Kp_w: 2.5
+  lookahead_dist: 0.40  # Keep this small (0.3 - 0.5) to track curves faithfully without corner-cutting
+
+sample_rates:
+  image_topic: 20
+  odometry: 100
+  desired_rate: 4

@@ -1,0 +1,193 @@
+# Training parameters
+train_params:
+  debug: True
+  log_freq: 500 # visualization and logging frequency in steps, set to zero to disable
+  seed: 42
+  epochs: 200
+  val_freq: 1 # validate every N epochs
+  val_max_batches: 50 # maximum number of batches to run during training validation to save time. Set to None for full validation.
+  device: cuda # device name, values: "cpu" or "cuda:x" where 'x' is gpu index, or "cuda:a" to use all GPUs
+  save_every: 1 # save a checkpoint every N epochs
+  grad_clipping: 1.0 # set to zero to disable grad clipping
+  start_saving_best: 1 # start epoch of saving best model
+  compile: False # compile the model (requires PyTorch > 2.0)
+  accumulation_steps: 16 # number of steps to accumulate gradients for before performing an optimizer step
+  task: all # which task to train on: options: ['all', 'fkd', 'ikd', 'wm']
+  loss_lr: 1e-4 # learning rate for the loss weights, if using homoscedastic uncertainty learning (check auto_weight)
+  auto_weight: False  # Enables homoscedastic uncertainty
+  loss_weights: # Manual tuning multipliers used when auto_weight is False
+    actions: 1.0
+    poses: 1.0
+    images: 1.0
+  use_augmentation: False # Enable or disable curriculum augmentations
+  curriculum_epochs: 10
+  variable_horizon: True # sample a prediction horizon each training step
+  min_pred_len: 4 # minimum sampled horizon when variable_horizon is enabled
+  max_pred_len: ${dataset.pred_len} # maximum sampled horizon when variable_horizon is enabled
+  debug_subset_size: 100 # when debug is true, cap train/val samples to this size
+  model_type: enc-dec  # for now, this is the only option
+
+# Logger parameters
+logger:
+  workspace: general # workspace name
+  project: hydra # project name
+  experiment_name: Hydra # prefix to the experiment name
+  tags: "flow-matching autoencoderKL"
+  resume: False # (boolean) whether to resume training or not
+  online: True # (boolean) whether to store logs online or not
+  experiment_key: "" # can be retrieved from logger dashboard, available if only resuming
+  offline_directory: ./logs # where to store log data
+  disabled: False # disable the comet ml
+  upload_model: False # upload the model to CometML
+  log_env_details: True # log virtual environment details
+  auto_histogram_weight_logging: False # allows you to enable/disable histogram logging for biases and weights
+  auto_histogram_gradient_logging: False # allows you to enable/disable automatic histogram logging of gradients
+  auto_histogram_activation_logging: False # allows you to enable/disable automatic histogram logging of activations
+
+
+# Dataloader parameters
+dataloader:
+  num_workers: 8 # Allowing multi-processing
+  batch_size: 16
+  shuffle: True # whether to shuffle data or not
+  pin_memory: True # use pageable memory or pinned memory (https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/)
+  drop_last: True
+  prefetch_factor: 2 # Aggressively queue up batches in RAM
+  persistent_workers: True # Prevent OS from killing/respawning workers between epochs
+
+# Train dataset parameters
+dataset:
+  root: Datasets/hydra_train # train data directory
+  train: True # train data
+  obs_len: 8
+  pred_len: 12
+  original_data_frequency_hz: 4  # Original frequency of the raw data
+  sampling_frequency_hz: 4       # Desired sampling frequency
+  sample_stride: 2
+  resize:
+     - 224 # height
+     - 224 # width
+
+# Validation dataset parameters/ only change parameters that are different from train data
+val_dataset:
+  root: Datasets/hydra_val # samples.pkl directory
+  train: False
+  obs_len: ${dataset.obs_len}
+  pred_len: ${dataset.pred_len}
+  original_data_frequency_hz: ${dataset.original_data_frequency_hz}
+  sampling_frequency_hz: ${dataset.sampling_frequency_hz}
+  sample_stride: 20 # obs + pred
+  resize:
+    - ${dataset.resize[0]} # height
+    - ${dataset.resize[1]} # width
+
+# model parameters
+model:
+  use_ctx_tokens: True # Option to use context tokens. If false, decoder attends directly to actual history tokens.
+  pred_len: ${dataset.pred_len}
+  pos_type: sinusoidal3d # Options: [sinusoidal, sinusoidal3d, learnable, learnable3d]
+  action_dim: 2
+  pose_dim: 3
+  frequency_sensitivity: 10.0  # this is for FF uplifting of actions into higher dim space
+  encoder:  # unified encoder config
+    vae_model_id: "stabilityai/sd-vae-ft-ema"
+    vae_scale_factor: 0.21855  # This is computed based on the GNM dataset
+    patch_size: 2
+    visual_latent_dim: 16  # Formula -> VAE Channels (4) * patch_size^2 = 16
+    image_size: ${dataset.resize}
+    transformer:
+      num_layers: 6
+      block_size: ${dataset.obs_len} # history length for the transformer
+      drop_path_rate: 0.1
+    transformer_layer:
+      d_model: 768
+      nhead: 12  # dim_head = d_model // nhead, so should divide evenly
+      dim_feedforward: 2048  # normally four times the d_model
+      dropout: 0.1
+      activation: gelu
+      norm_first: True
+      batch_first: True
+    pos_encoding:
+      d_model: ${model.encoder.transformer_layer.d_model}
+      dropout: 0.1
+  decoder:  # multi-task decoder config
+    fm_image:
+      block_type: attention # options: [convolution, attention]
+      hidden_dim: 768
+      sampling_steps: 10
+    fm_action:
+      hidden_dim: 256
+      sampling_steps: 10
+      num_heads: 8
+    fm_pose:
+      hidden_dim: 256
+      sampling_steps: 10
+      num_heads: 8
+    det_loss_weight: 0.1  # weight for deterministic regularization (prevents codebook collapse)
+    last_frame_conditioning: False # If true (and use_ctx_tokens=False), decoder cross-attends ONLY to the final observed frame. Can be enabled during inference for markovian rollout.
+    orthogonal_reg_weight: 0.0  # a gentle structural prior to encourage the image and control codebooks to occupy different subspaces
+    transformer:
+      num_layers: 6
+      block_size: ${model.pred_len}
+      drop_path_rate: 0.05
+    transformer_layer:
+      d_model: ${model.encoder.transformer_layer.d_model}
+      nhead: 12
+      dim_feedforward: ${model.encoder.transformer_layer.dim_feedforward}
+      dropout: 0.1
+      activation: gelu
+      norm_first: True
+      batch_first: True
+    pos_encoding:
+      d_model: ${model.decoder.transformer_layer.d_model}
+      dropout: 0.1
+    vq_image:  # High capacity for images, low capacity for control
+      num_embeddings: 2048
+      embedding_dim: ${model.decoder.transformer_layer.d_model}
+      commitment_cost: 0.25
+      decay: 0.99
+      epsilon: 1e-5
+      reset_freq: 100
+      name: vq_image
+      temperature: 0.0
+    vq_action:
+      num_embeddings: 64
+      embedding_dim: ${model.decoder.transformer_layer.d_model}
+      commitment_cost: 0.25
+      decay: 0.99
+      epsilon: 1e-5
+      reset_freq: 100
+      name: vq_action
+      temperature: 0.0
+    vq_pose:
+      num_embeddings: 64
+      embedding_dim: ${model.decoder.transformer_layer.d_model}
+      commitment_cost: 0.25
+      decay: 0.99
+      epsilon: 1e-5
+      reset_freq: 100
+      name: vq_pose
+      temperature: 0.0
+
+# inference parameters
+inference:
+  pred_len: ${model.pred_len} # desired rollout horizon at inference
+  autoregressive: False # if true and pred_len > model.pred_len, use chunked autoregressive rollout
+  markovian: False # Enable markovian deployment (only works if use_ctx_tokens=False)
+
+# directories
+directory:
+  model_name: model-name # file name for saved model. To be set automatically, no need to change
+  save: hydra/checkpoint
+  load: hydra/checkpoint/model-name/best # HuggingFace accelerate requires a directory to resume from
+
+# AdamW parameters
+adamw:
+  lr: 2e-4
+  betas:
+    - 0.9
+    - 0.95
+  eps: 1e-6
+  weight_decay: 0.08
+  amsgrad: False
+  fused: True # whether the fused implementation is used. Currently, torch.float64, torch.float32, torch.float16, and torch.bfloat16 are supported. (default: None)

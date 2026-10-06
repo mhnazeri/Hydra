@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling", "hatch-requirements-txt"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hydra"]
+
+[project]
+name = "Hydra"
+description = "Hydra: Discrete Latent Planning with Continuous Flow Matching Execution."
+readme = "README.md"
+version = "0.1.0"
+requires-python = ">= 3.10"
+maintainers = [
+    { name = "Mohammad Nazeri", email = "mnazerir@gmu.edu" },
+]
+
+keywords = ["navigation", "world-model"]
+dynamic = ["dependencies"]
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
+[project.optional-dependencies]
+dev = ["ruff", "loguru", "icecream", "types-requests"]
+
+
+[project.urls]
+Homepage = "https://robotixx.github.io/hydra/"
+Repository = "https://github.com/mhnazeri/hydra.git"
+Issues = "https://github.com/mhnazeri/hydra/issues"

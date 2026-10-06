@@ -1,0 +1,178 @@
+# Training parameters
+train_params:
+  debug: True
+  log_freq: 500 # visualization and logging frequency in steps, set to zero to disable
+  seed: 42
+  epochs: 200
+  val_freq: 1 # validate every N epochs
+  val_max_batches: 50 # maximum number of batches to run during training validation to save time. Set to None for full validation.
+  device: cuda # device name, values: "cpu" or "cuda:x" where 'x' is gpu index, or "cuda:a" to use all GPUs
+  optimizer: adamw
+  save_every: 1 # save a checkpoint every N epochs
+  grad_clipping: 1.0 # set to zero to disable grad clipping
+  start_saving_best: 5 # start epoch of saving best model
+  compile: False # compile the model (requires PyTorch > 2.0)
+  accumulation_steps: 32 # number of steps to accumulate gradients for before performing an optimizer step
+  task: all # which task to train on: options: ['all', 'fkd', 'ikd', 'wm']
+  loss_lr: 1e-4 # learning rate for the loss weights, if using homoscedastic uncertainty learning (check auto_weight)
+  auto_weight: True  # Enables homoscedastic uncertainty
+  use_augmentation: False # Enable or disable curriculum augmentations
+  loss_weights: # Manual tuning multipliers used when auto_weight is False
+    actions: 10.0
+    poses: 10.0
+    images: 1.0
+    spatial: 0.5
+  curriculum_epochs: 5
+  variable_horizon: True # sample a prediction horizon each training step
+  min_pred_len: 4 # minimum sampled horizon when variable_horizon is enabled
+  max_pred_len: ${dataset.pred_len} # maximum sampled horizon when variable_horizon is enabled
+  debug_subset_size: 1000 # when debug is true, cap train/val samples to this size
+
+# Logger parameters
+logger:
+  workspace: mhnazeri # workspace name
+  project: hydra # project name
+  experiment_name: VertiFormer # prefix to the experiment name
+  tags: "autoencoderKL perceiver"
+  resume: False # (boolean) whether to resume training or not
+  online: True # (boolean) whether to store logs online or not
+  experiment_key: "" # can be retrieved from logger dashboard, available if only resuming
+  offline_directory: ./logs # where to store log data
+  disabled: False # disable the comet ml
+  upload_model: False # upload the model to CometML
+  log_env_details: False # log virtual environment details
+  auto_histogram_weight_logging: True # allows you to enable/disable histogram logging for biases and weights
+  auto_histogram_gradient_logging: True # allows you to enable/disable automatic histogram logging of gradients
+  auto_histogram_activation_logging: True # allows you to enable/disable automatic histogram logging of activations
+
+
+# Dataloader parameters
+dataloader:
+  num_workers: 4 # Allowing multi-processing
+  batch_size: 16
+  shuffle: True # whether to shuffle data or not
+  pin_memory: True # use pageable memory or pinned memory (https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/)
+  drop_last: True
+
+# Train dataset parameters
+dataset:
+  root: /home/nao/Projects/Datasets/hydra_train # samples.pkl directory
+  train: True # train data
+  pred_len: 12
+  obs_len: 8
+  original_data_frequency_hz: 4  # Original frequency of the raw data
+  sampling_frequency_hz: 4       # Desired sampling frequency
+  sample_stride: 2
+  resize:
+     - 224 # height
+     - 224 # width
+
+# Validation dataset parameters/ only change parameters that are different from train data
+val_dataset:
+  root: /home/nao/Projects/Datasets/hydra_val # samples.pkl directory
+  train: False
+  obs_len: ${dataset.obs_len}
+  pred_len: ${dataset.pred_len}
+  original_data_frequency_hz: ${dataset.original_data_frequency_hz}
+  sampling_frequency_hz: ${dataset.sampling_frequency_hz}
+  sample_stride: ${dataset.sample_stride}
+  resize:
+    - ${dataset.resize[0]} # height
+    - ${dataset.resize[1]} # width
+
+# model parameters
+model:
+  pred_len: ${dataset.pred_len} # ${dataset.pred_len}
+  pos_type: sinusoidal3d # Options: [sinusoidal, sinusoidal3d, learnable, learnable3d]
+  action_dim: 2
+  pose_dim: 3
+  frequency_sensitivity: 10.0
+  use_ctx_tokens: True
+  encoder:  # unified encoder config
+    vae_model_id: "stabilityai/sd-vae-ft-ema"
+    vae_scale_factor: 0.21855
+    patch_size: 2
+    visual_latent_dim: 16  # Formula -> VAE Channels (4) * patch_size^2 = 16
+    image_size: ${dataset.resize} # Dynamically links to dataset resolution
+    transformer:
+      num_layers: 6
+      block_size: ${dataset.obs_len} # ${dataset.block_size} history length for the transformer
+    transformer_layer:
+      d_model: 384
+      nhead: 6  # dim_head = d_model // nhead, so should divide evenly
+      dim_feedforward: 1536  # normally four times the d_model
+      dropout: 0.1
+      activation: gelu
+      norm_first: True
+      batch_first: True
+    pos_encoding:
+      d_model: ${model.encoder.transformer_layer.d_model}
+      dropout: 0.1
+  decoder:  # multi-task decoder config
+    img_decoder_layers: 4 # Number of residual MLP blocks for image decoding
+    last_frame_conditioning: False # If true (and use_ctx_tokens=False), decoder cross-attends ONLY to the final observed frame. Can be enabled during inference for markovian rollout.
+    orthogonal_reg_weight: 0.0 # 0.05  # a gentle structural prior to encourage the image and control codebooks to occupy different subspaces, thus improving disentanglement and interpretability.
+    transformer:
+      num_layers: 6
+      block_size: ${model.pred_len}
+    transformer_layer:
+      d_model: 384
+      nhead: 6
+      dim_feedforward: ${model.encoder.transformer_layer.dim_feedforward}
+      dropout: 0.1
+      activation: gelu
+      norm_first: True
+      batch_first: True
+    pos_encoding:
+      d_model: ${model.decoder.transformer_layer.d_model}
+      dropout: 0.1
+
+# inference parameters
+inference:
+  pred_len: ${model.pred_len} # desired rollout horizon at inference
+  autoregressive: False # if true and pred_len > model.pred_len, use chunked autoregressive rollout
+  markovian: False # Enable markovian deployment (only works if use_ctx_tokens=False)
+
+# directories
+directory:
+  model_name: model-name # file name for saved model. To be set automatically, no need to change
+  save: hydra/checkpoint
+  load: hydra/checkpoint/model-name-best.tar
+
+# AdamW parameters if using Adam optimizer
+adamw:
+  lr: 5e-4
+  betas:
+    - 0.9
+    - 0.95
+  eps: 1e-6
+  weight_decay: 0.08
+  amsgrad: False
+  fused: True # whether the fused implementation is used. Currently, torch.float64, torch.float32, torch.float16, and torch.bfloat16 are supported. (default: None)
+
+# Adam parameters if using Adam optimizer
+adam:
+  lr: 5e-4
+  betas:
+    - 0.9
+    - 0.999
+  eps: 1e-8
+  weight_decay: 0
+  amsgrad: False
+
+# RMSprop parameters if using RMSprop optimizer
+rmsprop:
+  lr: 1e-3
+  momentum: 0
+  alpha: 0.99
+  eps: 1e-8
+  centered: False
+  weight_decay: 0
+
+# SGD parameters if using SGD optimizer
+sgd:
+  lr: 1e-3
+  momentum: 0 # momentum factor
+  weight_decay: 0 # weight decay (L2 penalty)
+  dampening: 0 # dampening for momentum
+  nesterov: False # enables Nesterov momentum

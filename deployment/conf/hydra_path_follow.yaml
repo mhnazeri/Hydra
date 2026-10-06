@@ -1,0 +1,145 @@
+# ==========================================
+# Hydra Deployment & Inference Configuration
+# ==========================================
+
+deployment:
+  checkpoint_path: hydra_path/checkpoint
+  device: cuda
+
+  # Action Chunking
+  chunk_size: 12             # k steps to execute before replanning (must be < model.pred_len)
+  goal_tolerance: 0.4      # Distance to goal in meters to trigger success
+
+# Inference parameters
+inference:
+  pred_len: 12                 # desired rollout horizon at inference
+
+# ==========================================
+# Path Following & Control Configuration
+# ==========================================
+
+path_follower:
+  use_pose_head: true          # True for FKD (PD Controller), False for IKD (Direct Actions)
+
+  sampling: # Parameters for hydra_follower_ros_sampling.py
+    num_candidates: 32
+    temperature: 0.1
+
+  cfg: # Parameters for hydra_follower_ros_cfg.py
+    guidance_scale: 0.5 # 1.0 = Strict Path Follower, 0.0 = Pure Obstacle Avoidance Prior
+
+  temporal_ensembling:
+    # Blends new trajectory with previous ones to smooth execution
+    action_blend_momentum: 0.6  # For IKD (direct actions), trust the new plan 60%, preserve momentum 40%
+    pose_blend_momentum: 0.85   # For FKD (PD controller waypoints)
+
+pure_pursuit:
+  Kp_v: 1.0
+  Kp_w: 2.0
+  lookahead_dist: 0.3
+  ema_alpha_v: 0.05 # Exponential Moving Average smoothing for linear velocity
+  ema_alpha_w: 0.05 # Exponential Moving Average smoothing for angular velocity
+
+sample_rates:
+  image_topic: 20
+  odometry: 100
+  desired_rate: 4
+
+# sample waypoints
+waypoints:
+  #1
+  - - 0.41
+    - -0.03
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #2
+  - - 0.86
+    - -0.08
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #3
+  - - 1.16
+    - -0.11
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #4
+  - - 1.55
+    - -0.15
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #5
+  - - 2.03
+    - -0.20
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #6
+  - - 2.57
+    - -0.22
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #7
+  - - 3.08
+    - -0.20
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #8
+  - - 3.52
+    - -0.14
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  #9
+  - - 3.79
+    - -0.08
+    - 0.0
+    - -0.001
+    - -0.002
+    - 0.15
+    - 0.99
+  #10
+  - - 4.1
+    - 0.18
+    - 0.0
+    - -0.002
+    - -0.003
+    - 0.4
+    - 0.92
+  #11
+  - - 4.25
+    - 0.32
+    - 0.0
+    - -0.004
+    - -0.003
+    - 0.35
+    - 0.94
+  #12
+  - - 4.6
+    - 0.62
+    - 0.0
+    - -0.004
+    - -0.004
+    - 0.36
+    - 0.93

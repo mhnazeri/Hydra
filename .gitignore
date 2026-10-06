@@ -1,0 +1,64 @@
+*.pdf
+*.mp4
+*.db
+*.png
+*.pt
+*.gz
+*.bag
+.ipynb_checkpoints
+data/
+hydra/checkpoint/*
+.envrc
+.venv
+*.sublime-project
+*.sublime-workspace
+*.idea
+*.pyproject
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pt
+*.pth
+*.tar
+!alex.pth
+!vgg.pth
+!squeeze.pth
+# Distribution / packaging
+.Python
+.python-version
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+# pyenv
+.python-version
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/

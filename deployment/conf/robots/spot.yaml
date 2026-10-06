@@ -1,0 +1,29 @@
+platform:
+  name: "spot"
+  max_v: 0.20
+  max_w: 1.5
+  # Spot Extrinsics Placeholder
+  T_cam_base:
+    - [2.2204460492503131e-16, -1.0, 0.0, 5.9999999999999984e-02]
+    - [-4.9979169270678137e-02, 0.0, -9.9875026039496617e-01, 0.75]
+    - [9.9875026039496617e-01, 2.2204460492503131e-16, -4.9979169270678137e-02, 1.0749687539060158e-02]
+    - [0.0, 0.0, 0.0, 1.0]
+
+ros:
+  publishers:
+    cmd_vel: '/cmd_vel'
+    cmd_vel_raw: '/raw_cmd_vel'
+    best_pose_predicted: '/best_pose_predicted'
+    pose_predicted: '/pose_predicted'
+    all_goals: '/all_goals'
+    goal_pose: '/goal_pose'
+    all_predicted_pose: '/all_predicted_pose'
+    hydra_predicted_images: '/hydra/predicted_images'
+    hydra_projected_trajectory_image: '/hydra/projected_trajectory_image'
+  subscribers:
+    image_raw: '/zed_node/rgb/image_rect_color'
+    image_compressed: '/zed_node/left/image_rect_color/compressed'
+    odom: '/robot/dlio/odom_node/odom'
+    odom_filtered: '/odometry/filtered'
+    camera_info: '/zed_node/rgb/camera_info'
+    cmd_vel: '/cmd_vel'
